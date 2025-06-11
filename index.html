@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rehoboth Wells Production Consumables Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Chosen Palette: Cool Gray with a Sky Blue accent -->
+    <!-- Application Structure Plan: A two-column dashboard layout was chosen for optimal user workflow. The left column is dedicated to user input (a clear, persistent form for adding new purchases), which is the primary action. The right column is for output and analysis (summary metrics, a detailed purchase history table, and a spending chart). This separation of input and output prevents clutter and creates an intuitive flow: add an item on the left, and instantly see all results and analyses update on the right. This is more user-friendly than a simple table as it guides the user through the process of data entry and review seamlessly. -->
+    <!-- Visualization & Content Choices: 
+        - New Purchase Form (HTML/JS): Goal: Data Entry. Method: A standard HTML form. Interaction: User fills fields and clicks "Add". Justification: The most direct and universally understood method for data input.
+        - Summary Cards (HTML/JS): Goal: Inform (At a Glance). Method: Styled divs displaying key calculated metrics (Total Spent, Total Items). Interaction: Dynamically updates with each new entry. Justification: Provides immediate, high-level feedback on the overall spending situation.
+        - Purchase History Table (HTML/JS): Goal: Inform (Detailed View). Method: A dynamically generated HTML table. Interaction: Populated via JavaScript, new entries are added to the top for recency. Justification: Offers a granular, row-by-row view of all transactions for detailed review or checking.
+        - Spending by Item Chart (Chart.js/Canvas): Goal: Compare/Analyze. Method: A vertical bar chart. Interaction: Tooltips on hover show exact spending per item; the chart redraws with every new entry. Justification: This visualization immediately answers the crucial business question: "Where is most of our money going?". It is superior to a simple list for identifying major cost centers quickly. Library: Chart.js on Canvas, as it is efficient and interactive.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 40vh;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 350px;
+            }
+        }
+        .table-container {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+    <div class="container mx-auto p-4 md:p-8">
+        
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-slate-900">Rehoboth Wells Consumables Purchase Dashboard</h1>
+            <p class="text-slate-600 mt-2">An interactive dashboard to add, view, and analyze your operational spending.</p>
+        </header>
+
+        <main class="grid grid-cols-1 lg:grid-cols-5 gap-8">
+
+            <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-md border border-slate-200">
+                <h2 class="text-2xl font-semibold mb-1 text-slate-900">Add New Purchase</h2>
+                <p class="text-slate-500 mb-6">Enter the details of a purchased consumable. The amount will be calculated and everything will update automatically.</p>
+                <form id="consumable-form" class="space-y-4">
+                    <div>
+                        <label for="date" class="block text-sm font-medium text-slate-700">Date</label>
+                        <input type="date" id="date" name="date" required class="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm placeholder-slate-400 focus:outline-none focus:ring-sky-500 focus:border-sky-500 sm:text-sm">
+                    </div>
+                    <div>
+                        <label for="item-name" class="block text-sm font-medium text-slate-700">Item Name</label>
+                        <input type="text" id="item-name" name="item-name" required placeholder="e.g., Safety Gloves" class="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm placeholder-slate-400 focus:outline-none focus:ring-sky-500 focus:border-sky-500 sm:text-sm">
+                    </div>
+                    <div>
+                        <label for="quantity" class="block text-sm font-medium text-slate-700">Quantity</label>
+                        <input type="number" id="quantity" name="quantity" required placeholder="e.g., 20" min="0" step="any" class="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm placeholder-slate-400 focus:outline-none focus:ring-sky-500 focus:border-sky-500 sm:text-sm">
+                    </div>
+                    <div>
+                        <label for="unit-price" class="block text-sm font-medium text-slate-700">Unit Price</label>
+                        <input type="number" id="unit-price" name="unit-price" required placeholder="e.g., 15.50" min="0" step="0.01" class="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm placeholder-slate-400 focus:outline-none focus:ring-sky-500 focus:border-sky-500 sm:text-sm">
+                    </div>
+                    <button type="submit" class="w-full bg-sky-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 transition-colors duration-200">
+                        Add Item
+                    </button>
+                </form>
+            </div>
+
+            <div class="lg:col-span-3 space-y-8">
+                <section id="summary-section">
+                     <h2 class="text-2xl font-semibold mb-4 text-slate-900">Summary</h2>
+                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div class="bg-white p-4 rounded-xl shadow-md border border-slate-200">
+                            <h3 class="text-sm font-medium text-slate-500">Total Spent</h3>
+                            <p id="total-amount" class="text-2xl font-bold text-slate-900 mt-1">GH₵0.00</p>
+                        </div>
+                        <div class="bg-white p-4 rounded-xl shadow-md border border-slate-200">
+                            <h3 class="text-sm font-medium text-slate-500">Total Items Purchased</h3>
+                            <p id="total-quantity" class="text-2xl font-bold text-slate-900 mt-1">0</p>
+                        </div>
+                     </div>
+                </section>
+                
+                <section id="table-section">
+                    <h2 class="text-2xl font-semibold mb-4 text-slate-900">Purchase History</h2>
+                    <div class="bg-white rounded-xl shadow-md border border-slate-200">
+                        <div class="table-container">
+                            <table class="w-full text-sm text-left text-slate-500">
+                                <thead class="text-xs text-slate-700 uppercase bg-slate-100 sticky top-0">
+                                    <tr>
+                                        <th scope="col" class="px-6 py-3">Date</th>
+                                        <th scope="col" class="px-6 py-3">Item Name</th>
+                                        <th scope="col" class="px-6 py-3">Qty</th>
+                                        <th scope="col" class="px-6 py-3">Unit Price</th>
+                                        <th scope="col" class="px-6 py-3">Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="consumables-table-body">
+                                    <tr class="text-center">
+                                        <td colspan="5" class="px-6 py-4 text-slate-500">No items added yet.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="chart-section">
+                    <h2 class="text-2xl font-semibold mb-4 text-slate-900">Spending by Item</h2>
+                     <div class="bg-white p-4 rounded-xl shadow-md border border-slate-200">
+                        <div class="chart-container">
+                            <canvas id="spending-chart"></canvas>
+                        </div>
+                     </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const form = document.getElementById('consumable-form');
+            const tableBody = document.getElementById('consumables-table-body');
+            const totalAmountEl = document.getElementById('total-amount');
+            const totalQuantityEl = document.getElementById('total-quantity');
+            const chartCanvas = document.getElementById('spending-chart');
+
+            let consumables = [];
+            let spendingChart;
+
+            const formatCurrency = (value) => {
+                // Changed locale to 'en-GH' for Ghana English and currency to 'GHS' for Ghana Cedi
+                return new Intl.NumberFormat('en-GH', { style: 'currency', currency: 'GHS' }).format(value);
+            };
+
+            const renderTable = () => {
+                tableBody.innerHTML = ''; 
+
+                if (consumables.length === 0) {
+                    tableBody.innerHTML = '<tr class="text-center"><td colspan="5" class="px-6 py-4 text-slate-500">No items added yet.</td></tr>';
+                    return;
+                }
+                
+                [...consumables].reverse().forEach(item => {
+                    const row = document.createElement('tr');
+                    row.className = 'bg-white border-b hover:bg-slate-50';
+                    row.innerHTML = `
+                        <td class="px-6 py-4">${item.date}</td>
+                        <td class="px-6 py-4 font-medium text-slate-900 whitespace-nowrap">${item.name}</td>
+                        <td class="px-6 py-4">${item.quantity}</td>
+                        <td class="px-6 py-4">${formatCurrency(item.unitPrice)}</td>
+                        <td class="px-6 py-4 font-semibold">${formatCurrency(item.amount)}</td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            };
+
+            const updateSummary = () => {
+                const totalAmount = consumables.reduce((sum, item) => sum + item.amount, 0);
+                const totalQuantity = consumables.reduce((sum, item) => sum + item.quantity, 0);
+
+                totalAmountEl.textContent = formatCurrency(totalAmount);
+                totalQuantityEl.textContent = totalQuantity.toLocaleString();
+            };
+
+            const renderOrUpdateChart = () => {
+                const spendingByItem = consumables.reduce((acc, item) => {
+                    acc[item.name] = (acc[item.name] || 0) + item.amount;
+                    return acc;
+                }, {});
+
+                const labels = Object.keys(spendingByItem);
+                const data = Object.values(spendingByItem);
+
+                if (spendingChart) {
+                    spendingChart.data.labels = labels;
+                    spendingChart.data.datasets[0].data = data;
+                    spendingChart.update();
+                } else {
+                    const ctx = chartCanvas.getContext('2d');
+                    spendingChart = new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                label: 'Total Spending',
+                                data: data,
+                                backgroundColor: 'rgba(14, 165, 233, 0.6)',
+                                borderColor: 'rgba(14, 165, 233, 1)',
+                                borderWidth: 1
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    ticks: {
+                                        callback: function(value) {
+                                            return formatCurrency(value);
+                                        }
+                                    }
+                                }
+                            },
+                            plugins: {
+                                legend: {
+                                    display: false
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            let label = context.dataset.label || '';
+                                            if (label) {
+                                                label += ': ';
+                                            }
+                                            if (context.parsed.y !== null) {
+                                                label += formatCurrency(context.parsed.y);
+                                            }
+                                            return label;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
+            };
+            
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                
+                const dateInput = document.getElementById('date');
+                const nameInput = document.getElementById('item-name');
+                const quantityInput = document.getElementById('quantity');
+                const unitPriceInput = document.getElementById('unit-price');
+
+                const newConsumable = {
+                    date: dateInput.value,
+                    name: nameInput.value,
+                    quantity: parseFloat(quantityInput.value),
+                    unitPrice: parseFloat(unitPriceInput.value),
+                    amount: parseFloat(quantityInput.value) * parseFloat(unitPriceInput.value)
+                };
+
+                consumables.push(newConsumable);
+
+                renderTable();
+                updateSummary();
+                renderOrUpdateChart();
+
+                form.reset();
+                dateInput.valueAsDate = new Date();
+            });
+            
+            document.getElementById('date').valueAsDate = new Date();
+            renderTable();
+            renderOrUpdateChart();
+        });
+    </script>
+</body>
+</html>
