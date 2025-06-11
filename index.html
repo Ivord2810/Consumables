@@ -7,12 +7,14 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Chosen Palette: Cool Gray with a Sky Blue accent -->
-    <!-- Application Structure Plan: A two-column dashboard layout was chosen for optimal user workflow. The left column is dedicated to user input (a clear, persistent form for adding new purchases), which is the primary action. The right column is for output and analysis (summary metrics, a detailed purchase history table, and a spending chart). This separation of input and output prevents clutter and creates an intuitive flow: add an item on the left, and instantly see all results and analyses update on the right. This is more user-friendly than a simple table as it guides the user through the process of data entry and review seamlessly. -->
+    <!-- Application Structure Plan: The application now features a multi-view Single Page Application (SPA) structure. Users can navigate between a "Dashboard View" and a "Table View" using a prominent navigation bar. The Dashboard (primary view) focuses on data input, quick summaries, and visual analysis (charts), maintaining its two-column layout. The new Table View provides a dedicated, comprehensive, and sortable display of all historical entries. This design addresses the need for both high-level insights/data entry and detailed data review, preventing clutter and ensuring a logical flow for different user tasks within a single interactive experience. -->
     <!-- Visualization & Content Choices: 
+        - Navigation (HTML/JS): Goal: Navigation. Method: Buttons in a header, controlled by JS to show/hide main sections. Interaction: Click to switch views. Justification: Provides clear, intuitive access to different application functionalities.
         - New Purchase Form (HTML/JS): Goal: Data Entry. Method: A standard HTML form. Interaction: User fills fields and clicks "Add". Justification: The most direct and universally understood method for data input.
         - Summary Cards (HTML/JS): Goal: Inform (At a Glance). Method: Styled divs displaying key calculated metrics (Total Spent, Total Items). Interaction: Dynamically updates with each new entry. Justification: Provides immediate, high-level feedback on the overall spending situation.
-        - Purchase History Table (HTML/JS): Goal: Inform (Detailed View). Method: A dynamically generated HTML table. Interaction: Populated via JavaScript, new entries are added to the top for recency. Justification: Offers a granular, row-by-row view of all transactions for detailed review or checking.
+        - Purchase History Table (HTML/JS): Goal: Inform (Detailed View). Method: A dynamically generated HTML table. Interaction: Populated via JavaScript, new entries are added to the top for recency; now includes sorting functionality. Justification: Offers a granular, row-by-row view of all transactions for detailed review or checking, enhanced by sorting.
         - Spending by Item Chart (Chart.js/Canvas): Goal: Compare/Analyze. Method: A vertical bar chart. Interaction: Tooltips on hover show exact spending per item; the chart redraws with every new entry. Justification: This visualization immediately answers the crucial business question: "Where is most of our money going?". It is superior to a simple list for identifying major cost centers quickly. Library: Chart.js on Canvas, as it is efficient and interactive.
+        - Export Button (HTML/JS): Goal: Data Export. Method: Button triggering CSV download. Interaction: Click to download. Justification: Allows users to work with data outside the application.
     -->
     <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
     <style>
@@ -35,8 +37,32 @@
             }
         }
         .table-container {
-            max-height: 300px;
+            max-height: 300px; /* For the dashboard's mini-table */
             overflow-y: auto;
+        }
+        .full-table-container {
+            max-height: calc(100vh - 200px); /* Adjust based on header/footer space */
+            overflow-y: auto;
+        }
+        .sortable-header {
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .sort-indicator {
+            margin-left: 0.5rem;
+            width: 0;
+            height: 0;
+            border-left: 4px solid transparent;
+            border-right: 4px solid transparent;
+            opacity: 0.5;
+        }
+        .sort-indicator.asc {
+            border-bottom: 6px solid #1e293b; /* slate-900 */
+        }
+        .sort-indicator.desc {
+            border-top: 6px solid #1e293b; /* slate-900 */
         }
     </style>
 </head>
@@ -45,12 +71,21 @@
     <div class="container mx-auto p-4 md:p-8">
         
         <header class="text-center mb-8">
-            <h1 class="text-3xl md:text-4xl font-bold text-slate-900">Rehoboth Wells Consumables Purchase Dashboard</h1>
-            <p class="text-slate-600 mt-2">An interactive dashboard to add, view, and analyze your operational spending.</p>
+            <h1 class="text-4xl md:text-5xl font-extrabold text-sky-700 mb-2">Rehoboth Wells</h1>
+            <h2 class="text-2xl md:text-3xl font-bold text-slate-900">Consumables Purchase Tracker</h2>
+            <p class="text-slate-600 mt-2">An interactive tool to manage and analyze your operational spending.</p>
         </header>
 
-        <main class="grid grid-cols-1 lg:grid-cols-5 gap-8">
+        <nav class="mb-8 flex justify-center space-x-4">
+            <button id="nav-dashboard" class="px-6 py-3 rounded-lg font-semibold bg-sky-600 text-white shadow hover:bg-sky-700 transition-colors duration-200">
+                Dashboard
+            </button>
+            <button id="nav-table-view" class="px-6 py-3 rounded-lg font-semibold bg-slate-200 text-slate-700 shadow hover:bg-slate-300 transition-colors duration-200">
+                Table View
+            </button>
+        </nav>
 
+        <main id="dashboard-view" class="grid grid-cols-1 lg:grid-cols-5 gap-8">
             <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-md border border-slate-200">
                 <h2 class="text-2xl font-semibold mb-1 text-slate-900">Add New Purchase</h2>
                 <p class="text-slate-500 mb-6">Enter the details of a purchased consumable. The amount will be calculated and everything will update automatically.</p>
@@ -90,23 +125,43 @@
                             <p id="total-quantity" class="text-2xl font-bold text-slate-900 mt-1">0</p>
                         </div>
                      </div>
+                     <div class="mt-4">
+                        <button id="export-excel-btn" class="w-full bg-emerald-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 transition-colors duration-200">
+                            Export to Excel (CSV)
+                        </button>
+                     </div>
                 </section>
                 
-                <section id="table-section">
-                    <h2 class="text-2xl font-semibold mb-4 text-slate-900">Purchase History</h2>
+                <section id="table-section-dashboard">
+                    <h2 class="text-2xl font-semibold mb-4 text-slate-900">Recent Purchases</h2>
                     <div class="bg-white rounded-xl shadow-md border border-slate-200">
                         <div class="table-container">
                             <table class="w-full text-sm text-left text-slate-500">
                                 <thead class="text-xs text-slate-700 uppercase bg-slate-100 sticky top-0">
                                     <tr>
-                                        <th scope="col" class="px-6 py-3">Date</th>
-                                        <th scope="col" class="px-6 py-3">Item Name</th>
+                                        <th scope="col" class="px-6 py-3">
+                                            <div class="sortable-header" data-sort-by="date">
+                                                Date
+                                                <span class="sort-indicator" id="sort-date-indicator-dashboard"></span>
+                                            </div>
+                                        </th>
+                                        <th scope="col" class="px-6 py-3">
+                                            <div class="sortable-header" data-sort-by="name">
+                                                Item Name
+                                                <span class="sort-indicator" id="sort-name-indicator-dashboard"></span>
+                                            </div>
+                                        </th>
                                         <th scope="col" class="px-6 py-3">Qty</th>
-                                        <th scope="col" class="px-6 py-3">Unit Price</th>
+                                        <th scope="col" class="px-6 py-3">
+                                            <div class="sortable-header" data-sort-by="unitPrice">
+                                                Unit Price
+                                                <span class="sort-indicator" id="sort-unitPrice-indicator-dashboard"></span>
+                                            </div>
+                                        </th>
                                         <th scope="col" class="px-6 py-3">Amount</th>
                                     </tr>
                                 </thead>
-                                <tbody id="consumables-table-body">
+                                <tbody id="consumables-table-body-dashboard">
                                     <tr class="text-center">
                                         <td colspan="5" class="px-6 py-4 text-slate-500">No items added yet.</td>
                                     </tr>
@@ -126,33 +181,135 @@
                 </section>
             </div>
         </main>
+
+        <section id="table-view" class="hidden">
+            <h2 class="text-3xl font-bold mb-6 text-slate-900 text-center">All Purchase Entries</h2>
+            <div class="bg-white rounded-xl shadow-md border border-slate-200">
+                <div class="full-table-container">
+                    <table class="w-full text-sm text-left text-slate-500">
+                        <thead class="text-xs text-slate-700 uppercase bg-slate-100 sticky top-0">
+                            <tr>
+                                <th scope="col" class="px-6 py-3">
+                                    <div class="sortable-header" data-sort-by="date">
+                                        Date
+                                        <span class="sort-indicator" id="sort-date-indicator-table"></span>
+                                    </div>
+                                </th>
+                                <th scope="col" class="px-6 py-3">
+                                    <div class="sortable-header" data-sort-by="name">
+                                        Item Name
+                                        <span class="sort-indicator" id="sort-name-indicator-table"></span>
+                                    </div>
+                                </th>
+                                <th scope="col" class="px-6 py-3">Qty</th>
+                                <th scope="col" class="px-6 py-3">
+                                    <div class="sortable-header" data-sort-by="unitPrice">
+                                        Unit Price
+                                        <span class="sort-indicator" id="sort-unitPrice-indicator-table"></span>
+                                    </div>
+                                </th>
+                                <th scope="col" class="px-6 py-3">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody id="consumables-table-body-full">
+                            <tr class="text-center">
+                                <td colspan="5" class="px-6 py-4 text-slate-500">No items added yet.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
     </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const form = document.getElementById('consumable-form');
-            const tableBody = document.getElementById('consumables-table-body');
+            const dashboardTableBody = document.getElementById('consumables-table-body-dashboard');
+            const fullTableBody = document.getElementById('consumables-table-body-full');
             const totalAmountEl = document.getElementById('total-amount');
             const totalQuantityEl = document.getElementById('total-quantity');
             const chartCanvas = document.getElementById('spending-chart');
+            const exportExcelBtn = document.getElementById('export-excel-btn');
+
+            const navDashboardBtn = document.getElementById('nav-dashboard');
+            const navTableViewBtn = document.getElementById('nav-table-view');
+            const dashboardView = document.getElementById('dashboard-view');
+            const tableView = document.getElementById('table-view');
 
             let consumables = [];
             let spendingChart;
+            let currentSortColumn = 'date'; 
+            let currentSortDirection = 'desc'; 
+            let activeView = 'dashboard';
 
             const formatCurrency = (value) => {
-                // Changed locale to 'en-GH' for Ghana English and currency to 'GHS' for Ghana Cedi
                 return new Intl.NumberFormat('en-GH', { style: 'currency', currency: 'GHS' }).format(value);
             };
 
-            const renderTable = () => {
-                tableBody.innerHTML = ''; 
+            const updateSortIndicators = () => {
+                document.querySelectorAll('.sort-indicator').forEach(indicator => {
+                    indicator.className = 'sort-indicator'; 
+                });
+
+                const activeIndicatorDashboard = document.getElementById(`sort-${currentSortColumn}-indicator-dashboard`);
+                if (activeIndicatorDashboard && activeView === 'dashboard') {
+                    activeIndicatorDashboard.classList.add(currentSortDirection);
+                }
+
+                const activeIndicatorTable = document.getElementById(`sort-${currentSortColumn}-indicator-table`);
+                if (activeIndicatorTable && activeView === 'table') {
+                    activeIndicatorTable.classList.add(currentSortDirection);
+                }
+            };
+
+            const sortConsumables = (column) => {
+                if (currentSortColumn === column) {
+                    currentSortDirection = currentSortDirection === 'asc' ? 'desc' : 'asc';
+                } else {
+                    currentSortColumn = column;
+                    currentSortDirection = 'asc'; 
+                }
+
+                consumables.sort((a, b) => {
+                    let valA = a[column];
+                    let valB = b[column];
+
+                    if (column === 'date') {
+                        valA = new Date(valA);
+                        valB = new Date(valB);
+                    } else if (column === 'name') {
+                        valA = valA.toLowerCase();
+                        valB = valB.toLowerCase();
+                    }
+
+                    if (valA < valB) {
+                        return currentSortDirection === 'asc' ? -1 : 1;
+                    }
+                    if (valA > valB) {
+                        return currentSortDirection === 'asc' ? 1 : -1;
+                    }
+                    return 0;
+                });
+
+                renderTables();
+                updateSortIndicators();
+            };
+
+            const renderTables = () => {
+                dashboardTableBody.innerHTML = ''; 
+                fullTableBody.innerHTML = ''; 
 
                 if (consumables.length === 0) {
-                    tableBody.innerHTML = '<tr class="text-center"><td colspan="5" class="px-6 py-4 text-slate-500">No items added yet.</td></tr>';
+                    dashboardTableBody.innerHTML = '<tr class="text-center"><td colspan="5" class="px-6 py-4 text-slate-500">No items added yet.</td></tr>';
+                    fullTableBody.innerHTML = '<tr class="text-center"><td colspan="5" class="px-6 py-4 text-slate-500">No items added yet.</td></tr>';
                     return;
                 }
                 
-                [...consumables].reverse().forEach(item => {
+                // Render for Dashboard (e.g., recent 5 entries)
+                const recentConsumables = [...consumables].reverse().slice(0, 5); 
+                recentConsumables.forEach(item => {
                     const row = document.createElement('tr');
                     row.className = 'bg-white border-b hover:bg-slate-50';
                     row.innerHTML = `
@@ -162,7 +319,21 @@
                         <td class="px-6 py-4">${formatCurrency(item.unitPrice)}</td>
                         <td class="px-6 py-4 font-semibold">${formatCurrency(item.amount)}</td>
                     `;
-                    tableBody.appendChild(row);
+                    dashboardTableBody.appendChild(row);
+                });
+
+                // Render for Full Table View
+                consumables.forEach(item => {
+                    const row = document.createElement('tr');
+                    row.className = 'bg-white border-b hover:bg-slate-50';
+                    row.innerHTML = `
+                        <td class="px-6 py-4">${item.date}</td>
+                        <td class="px-6 py-4 font-medium text-slate-900 whitespace-nowrap">${item.name}</td>
+                        <td class="px-6 py-4">${item.quantity}</td>
+                        <td class="px-6 py-4">${formatCurrency(item.unitPrice)}</td>
+                        <td class="px-6 py-4 font-semibold">${formatCurrency(item.amount)}</td>
+                    `;
+                    fullTableBody.appendChild(row);
                 });
             };
 
@@ -237,6 +408,32 @@
                     });
                 }
             };
+
+            const exportToCsv = () => {
+                if (consumables.length === 0) {
+                    // Use a message box or a custom modal instead of alert()
+                    console.log("No data to export!"); 
+                    return;
+                }
+
+                let csv = 'Date,Item Name,Quantity,Unit Price,Amount\n';
+                consumables.forEach(item => {
+                    csv += `${item.date},"${item.name.replace(/"/g, '""')}",${item.quantity},${item.unitPrice},${item.amount}\n`; // Handle commas and quotes in item name
+                });
+
+                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                if (link.download !== undefined) { 
+                    const url = URL.createObjectURL(blob);
+                    link.setAttribute('href', url);
+                    link.setAttribute('download', 'consumables_tracker.csv');
+                    link.style.visibility = 'hidden';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                }
+            };
             
             form.addEventListener('submit', (e) => {
                 e.preventDefault();
@@ -248,24 +445,68 @@
 
                 const newConsumable = {
                     date: dateInput.value,
-                    name: nameInput.value,
+                    name: nameInput.value.trim(),
                     quantity: parseFloat(quantityInput.value),
                     unitPrice: parseFloat(unitPriceInput.value),
                     amount: parseFloat(quantityInput.value) * parseFloat(unitPriceInput.value)
                 };
 
+                if (isNaN(newConsumable.quantity) || isNaN(newConsumable.unitPrice)) {
+                    console.error("Invalid quantity or unit price entered.");
+                    return;
+                }
+
                 consumables.push(newConsumable);
 
-                renderTable();
+                sortConsumables(currentSortColumn); 
                 updateSummary();
                 renderOrUpdateChart();
 
                 form.reset();
-                dateInput.valueAsDate = new Date();
+                dateInput.valueAsDate = new Date(); // Reset date to today's date
             });
+
+            // Event listeners for sorting headers
+            document.querySelectorAll('.sortable-header').forEach(header => {
+                header.addEventListener('click', (e) => {
+                    const sortBy = header.dataset.sortBy;
+                    sortConsumables(sortBy);
+                });
+            });
+
+            exportExcelBtn.addEventListener('click', exportToCsv);
+
+            // Navigation functionality
+            const showView = (viewId) => {
+                dashboardView.classList.add('hidden');
+                tableView.classList.add('hidden');
+
+                navDashboardBtn.classList.remove('bg-sky-600', 'text-white');
+                navDashboardBtn.classList.add('bg-slate-200', 'text-slate-700');
+                navTableViewBtn.classList.remove('bg-sky-600', 'text-white');
+                navTableViewBtn.classList.add('bg-slate-200', 'text-slate-700');
+
+                if (viewId === 'dashboard') {
+                    dashboardView.classList.remove('hidden');
+                    navDashboardBtn.classList.add('bg-sky-600', 'text-white');
+                    navDashboardBtn.classList.remove('bg-slate-200', 'text-slate-700');
+                    activeView = 'dashboard';
+                } else if (viewId === 'table') {
+                    tableView.classList.remove('hidden');
+                    navTableViewBtn.classList.add('bg-sky-600', 'text-white');
+                    navTableViewBtn.classList.remove('bg-slate-200', 'text-slate-700');
+                    activeView = 'table';
+                }
+                updateSortIndicators(); // Update indicators for the currently active view
+            };
+
+            navDashboardBtn.addEventListener('click', () => showView('dashboard'));
+            navTableViewBtn.addEventListener('click', () => showView('table'));
             
-            document.getElementById('date').valueAsDate = new Date();
-            renderTable();
+            document.getElementById('date').valueAsDate = new Date(); // Set initial date
+            showView('dashboard'); // Default view
+            sortConsumables(currentSortColumn); 
+            updateSummary();
             renderOrUpdateChart();
         });
     </script>
